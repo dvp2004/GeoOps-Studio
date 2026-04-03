@@ -7,12 +7,19 @@ import type {
   DemandPoint,
   FacilityPoint,
 } from "@/components/comparison-map";
+import { API_BASE } from "@/lib/config";
 import {
   downloadAssignmentsCsv,
   downloadComparisonJson,
   downloadFacilitySummaryCsv,
 } from "@/lib/export";
-import { API_BASE } from "@/lib/config";
+import {
+  downloadCandidateFacilitiesSample,
+  downloadCurrentFacilitiesSample,
+  downloadDemandSample,
+  downloadDemandTemplate,
+  downloadFacilityTemplate,
+} from "@/lib/sample-files";
 
 const ComparisonMap = dynamic(() => import("@/components/comparison-map"), {
   ssr: false,
@@ -71,6 +78,64 @@ type CurrentVsOptimisedComparisonResponse = {
   baseline_assignment_lines: AssignmentLine[];
   optimised_assignment_lines: AssignmentLine[];
 };
+
+type UploadFieldProps = {
+  inputId: string;
+  label: string;
+  description: string;
+  file: File | null;
+  onFileChange: (file: File | null) => void;
+};
+
+const cardClass = "rounded-3xl border border-slate-200 bg-white shadow-sm";
+const subtleCardClass = "rounded-2xl border border-slate-200 bg-slate-50";
+const inputClass =
+  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100";
+const buttonBase =
+  "inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50";
+const demoButtonClass = `${buttonBase} bg-indigo-600 text-white hover:bg-indigo-700`;
+const primaryButtonClass = `${buttonBase} bg-slate-900 text-white hover:bg-slate-800`;
+const compareButtonClass = `${buttonBase} bg-emerald-600 text-white hover:bg-emerald-700`;
+const secondaryButtonClass = `${buttonBase} border border-slate-300 bg-white text-slate-900 hover:bg-slate-50`;
+const ghostButtonClass = `${buttonBase} border border-slate-200 bg-slate-100 text-slate-900 hover:bg-slate-200`;
+const downloadButtonClass = `${buttonBase} border border-slate-200 bg-slate-100 text-slate-900 hover:bg-slate-200`;
+
+function UploadField({
+  inputId,
+  label,
+  description,
+  file,
+  onFileChange,
+}: UploadFieldProps) {
+  return (
+    <div className={`${subtleCardClass} p-4 space-y-3`}>
+      <div className="space-y-1">
+        <label htmlFor={inputId} className="block text-sm font-semibold text-slate-900">
+          {label}
+        </label>
+        <p className="text-sm text-slate-600">{description}</p>
+      </div>
+
+      <input
+        id={inputId}
+        type="file"
+        accept=".csv"
+        className="hidden"
+        onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
+      />
+
+      <div className="flex flex-wrap items-center gap-3">
+        <label htmlFor={inputId} className={`${secondaryButtonClass} cursor-pointer`}>
+          Choose CSV
+        </label>
+
+        <span className="text-sm text-slate-600">
+          {file ? file.name : "No file selected"}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   const [demandFile, setDemandFile] = useState<File | null>(null);
@@ -318,26 +383,28 @@ export default function Home() {
 
   function renderPreviewCard(summary: FileSummary, titleOverride?: string) {
     return (
-      <div className="rounded-2xl border p-6 space-y-4">
+      <div className={`${cardClass} p-6 space-y-4`}>
         <div>
-          <h2 className="text-xl font-semibold">{titleOverride ?? `${summary.file_kind} file`}</h2>
-          <p className="text-sm text-gray-600">
+          <h2 className="text-xl font-semibold text-slate-900">
+            {titleOverride ?? `${summary.file_kind} file`}
+          </h2>
+          <p className="text-sm text-slate-600">
             {summary.filename} · {summary.row_count} rows
           </p>
         </div>
 
         <div>
-          <p className="font-medium">Columns</p>
-          <p className="text-sm">{summary.columns.join(", ")}</p>
+          <p className="font-medium text-slate-900">Columns</p>
+          <p className="text-sm text-slate-600">{summary.columns.join(", ")}</p>
         </div>
 
         <div className="overflow-x-auto">
-          <p className="font-medium mb-2">Preview</p>
-          <table className="min-w-full border text-sm">
-            <thead>
+          <p className="mb-2 font-medium text-slate-900">Preview</p>
+          <table className="min-w-full border border-slate-200 text-sm">
+            <thead className="bg-slate-50">
               <tr>
                 {summary.columns.map((column) => (
-                  <th key={column} className="border px-3 py-2 text-left">
+                  <th key={column} className="border border-slate-200 px-3 py-2 text-left">
                     {column}
                   </th>
                 ))}
@@ -347,7 +414,7 @@ export default function Home() {
               {summary.preview_rows.map((row, index) => (
                 <tr key={index}>
                   {summary.columns.map((column) => (
-                    <td key={column} className="border px-3 py-2">
+                    <td key={column} className="border border-slate-200 px-3 py-2 text-slate-700">
                       {String(row[column] ?? "")}
                     </td>
                   ))}
@@ -362,42 +429,52 @@ export default function Home() {
 
   function renderBaselineResults(result: BaselineSolveResponse) {
     return (
-      <div className="rounded-2xl border p-6 space-y-6">
+      <div className={`${cardClass} p-6 space-y-6`}>
         <div className="space-y-1">
-          <h2 className="text-2xl font-semibold">Current network baseline</h2>
-          <p className="text-sm text-gray-600">
+          <h2 className="text-2xl font-semibold text-slate-900">Current network baseline</h2>
+          <p className="text-sm text-slate-600">
             Graph: {result.graph_id} · Demand points: {result.demand_count} · Current facilities:{" "}
             {result.candidate_count}
           </p>
         </div>
 
-        <div className="rounded-xl border p-4">
-          <p className="text-sm text-gray-600">Total weighted cost</p>
-          <p className="text-2xl font-bold">{result.total_weighted_cost_km.toFixed(3)} km</p>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm text-slate-600">Total weighted cost</p>
+          <p className="text-2xl font-bold text-slate-900">
+            {result.total_weighted_cost_km.toFixed(3)} km
+          </p>
         </div>
 
         <div className="overflow-x-auto">
-          <p className="font-medium mb-2">Assignments</p>
-          <table className="min-w-full border text-sm">
-            <thead>
+          <p className="mb-2 font-medium text-slate-900">Assignments</p>
+          <table className="min-w-full border border-slate-200 text-sm">
+            <thead className="bg-slate-50">
               <tr>
-                <th className="border px-3 py-2 text-left">Demand ID</th>
-                <th className="border px-3 py-2 text-left">Weight</th>
-                <th className="border px-3 py-2 text-left">Demand node</th>
-                <th className="border px-3 py-2 text-left">Assigned current facility</th>
-                <th className="border px-3 py-2 text-left">Facility node</th>
-                <th className="border px-3 py-2 text-left">Weighted cost (km)</th>
+                <th className="border border-slate-200 px-3 py-2 text-left">Demand ID</th>
+                <th className="border border-slate-200 px-3 py-2 text-left">Weight</th>
+                <th className="border border-slate-200 px-3 py-2 text-left">Demand node</th>
+                <th className="border border-slate-200 px-3 py-2 text-left">
+                  Assigned current facility
+                </th>
+                <th className="border border-slate-200 px-3 py-2 text-left">Facility node</th>
+                <th className="border border-slate-200 px-3 py-2 text-left">
+                  Weighted cost (km)
+                </th>
               </tr>
             </thead>
             <tbody>
               {result.assignment_rows.map((row) => (
                 <tr key={row.demand_id}>
-                  <td className="border px-3 py-2">{row.demand_id}</td>
-                  <td className="border px-3 py-2">{row.demand_weight}</td>
-                  <td className="border px-3 py-2">{row.snapped_demand_node_id}</td>
-                  <td className="border px-3 py-2">{row.assigned_candidate_id}</td>
-                  <td className="border px-3 py-2">{row.assigned_candidate_node_id}</td>
-                  <td className="border px-3 py-2">{row.weighted_cost_km.toFixed(3)}</td>
+                  <td className="border border-slate-200 px-3 py-2">{row.demand_id}</td>
+                  <td className="border border-slate-200 px-3 py-2">{row.demand_weight}</td>
+                  <td className="border border-slate-200 px-3 py-2">{row.snapped_demand_node_id}</td>
+                  <td className="border border-slate-200 px-3 py-2">{row.assigned_candidate_id}</td>
+                  <td className="border border-slate-200 px-3 py-2">
+                    {row.assigned_candidate_node_id}
+                  </td>
+                  <td className="border border-slate-200 px-3 py-2">
+                    {row.weighted_cost_km.toFixed(3)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -410,21 +487,21 @@ export default function Home() {
   function renderComparisonTable(title: string, rows: ComparisonAssignmentRow[]) {
     return (
       <div className="overflow-x-auto">
-        <p className="font-medium mb-2">{title}</p>
-        <table className="min-w-full border text-sm">
-          <thead>
+        <p className="mb-2 font-medium text-slate-900">{title}</p>
+        <table className="min-w-full border border-slate-200 text-sm">
+          <thead className="bg-slate-50">
             <tr>
-              <th className="border px-3 py-2 text-left">Demand ID</th>
-              <th className="border px-3 py-2 text-left">Assigned facility</th>
-              <th className="border px-3 py-2 text-left">Weighted cost</th>
+              <th className="border border-slate-200 px-3 py-2 text-left">Demand ID</th>
+              <th className="border border-slate-200 px-3 py-2 text-left">Assigned facility</th>
+              <th className="border border-slate-200 px-3 py-2 text-left">Weighted cost</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row, index) => (
               <tr key={`${row.demand_id}-${row.candidate_id}-${index}`}>
-                <td className="border px-3 py-2">{row.demand_id}</td>
-                <td className="border px-3 py-2">{row.candidate_id}</td>
-                <td className="border px-3 py-2">{row.weighted_cost.toFixed(3)}</td>
+                <td className="border border-slate-200 px-3 py-2">{row.demand_id}</td>
+                <td className="border border-slate-200 px-3 py-2">{row.candidate_id}</td>
+                <td className="border border-slate-200 px-3 py-2">{row.weighted_cost.toFixed(3)}</td>
               </tr>
             ))}
           </tbody>
@@ -435,73 +512,67 @@ export default function Home() {
 
   function renderComparisonResults(result: CurrentVsOptimisedComparisonResponse) {
     return (
-      <div className="rounded-2xl border p-6 space-y-6">
+      <div className={`${cardClass} p-6 space-y-6`}>
         <div className="space-y-1">
-          <h2 className="text-2xl font-semibold">Current vs optimised comparison</h2>
-          <p className="text-sm text-gray-600">
+          <h2 className="text-2xl font-semibold text-slate-900">Current vs optimised comparison</h2>
+          <p className="text-sm text-slate-600">
             Current facilities: {result.current_facility_count} · Candidate pool:{" "}
             {result.candidate_pool_count} · p: {result.p}
           </p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-xl border p-4">
-            <p className="text-sm text-gray-600">Current weighted cost</p>
-            <p className="text-2xl font-bold">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm text-slate-600">Current weighted cost</p>
+            <p className="text-2xl font-bold text-slate-900">
               {result.baseline_total_weighted_cost.toFixed(3)}
             </p>
           </div>
 
-          <div className="rounded-xl border p-4">
-            <p className="text-sm text-gray-600">Optimised weighted cost</p>
-            <p className="text-2xl font-bold">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm text-slate-600">Optimised weighted cost</p>
+            <p className="text-2xl font-bold text-slate-900">
               {result.optimised_total_weighted_cost.toFixed(3)}
             </p>
           </div>
 
-          <div className="rounded-xl border p-4">
-            <p className="text-sm text-gray-600">Improvement</p>
-            <p className="text-2xl font-bold">{result.improvement_pct.toFixed(2)}%</p>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm text-slate-600">Improvement</p>
+            <p className="text-2xl font-bold text-emerald-700">
+              {result.improvement_pct.toFixed(2)}%
+            </p>
           </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-xl border p-4">
-            <p className="text-sm text-gray-600">Current facility IDs</p>
-            <p className="text-base font-medium">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm text-slate-600">Current facility IDs</p>
+            <p className="text-base font-medium text-slate-900">
               {result.current_facility_ids.join(", ")}
             </p>
           </div>
 
-          <div className="rounded-xl border p-4">
-            <p className="text-sm text-gray-600">Selected optimised facility IDs</p>
-            <p className="text-base font-medium">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm text-slate-600">Selected optimised facility IDs</p>
+            <p className="text-base font-medium text-slate-900">
               {result.selected_candidate_ids.join(", ")}
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => downloadComparisonJson(result)}
-            className="rounded-xl border px-4 py-2 font-medium"
-          >
+          <button type="button" onClick={() => downloadComparisonJson(result)} className={downloadButtonClass}>
             Download JSON
           </button>
 
-          <button
-            type="button"
-            onClick={() => downloadAssignmentsCsv(result)}
-            className="rounded-xl border px-4 py-2 font-medium"
-          >
+          <button type="button" onClick={() => downloadAssignmentsCsv(result)} className={downloadButtonClass}>
             Download assignments CSV
           </button>
 
           <button
             type="button"
             onClick={() => downloadFacilitySummaryCsv(result)}
-            className="rounded-xl border px-4 py-2 font-medium"
+            className={downloadButtonClass}
           >
             Download facilities CSV
           </button>
@@ -535,61 +606,117 @@ export default function Home() {
     );
   }
 
+  function renderWorkspaceHint() {
+    if (baselineResult || comparisonResult) {
+      return null;
+    }
+
+    return (
+      <div className={`${cardClass} p-8`}>
+        <div className="max-w-3xl space-y-3">
+          <h2 className="text-2xl font-semibold text-slate-900">Nothing has been run yet</h2>
+          <p className="text-slate-600">
+            Start with <strong>Run built-in demo</strong> for the fastest end-to-end view, or
+            upload your own CSV files and validate them before running the baseline or comparison.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <main className="min-h-screen p-8">
+    <main className="min-h-screen bg-slate-50 px-6 py-10 md:px-8">
       <div className="mx-auto max-w-7xl space-y-8">
         <div className="space-y-2">
-          <h1 className="text-3xl font-bold">GeoOps Studio</h1>
-          <p className="text-lg">
+          <h1 className="text-4xl font-bold tracking-tight text-slate-900">GeoOps Studio</h1>
+          <p className="max-w-4xl text-lg text-slate-700">
             Upload demand, current facilities, and candidate facilities to compare the
             current network against a like-for-like p-median redesign.
           </p>
-          <p className="text-sm text-gray-600">
-            Built-in demo mode is now the fastest path for smoke tests and screenshots.
+          <p className="text-sm text-slate-500">
+            Built-in demo mode is the fastest path for smoke tests and screenshots.
           </p>
         </div>
 
-        <div className="rounded-2xl border p-6 space-y-6">
-          <div className="grid gap-6 md:grid-cols-3" key={fileInputKey}>
-            <div className="space-y-2">
-              <label className="block font-medium">Demand CSV</label>
-              <input
-                type="file"
-                accept=".csv"
-                onChange={(e) => {
-                  setDemandFile(e.target.files?.[0] ?? null);
-                  resetAllMessages();
-                }}
-              />
+        <div className={`${cardClass} p-6 space-y-6`}>
+          <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5 space-y-4">
+            <div className="space-y-1">
+              <h2 className="text-xl font-semibold text-slate-900">Input guide</h2>
+              <p className="text-sm text-slate-700">
+                Demand rows need <code>id, lat, lng, weight</code>. Facility rows need{" "}
+                <code>id, lat, lng</code>. For fair current-vs-optimised comparison, <code>p</code>{" "}
+                must match the number of current facilities.
+              </p>
             </div>
 
-            <div className="space-y-2">
-              <label className="block font-medium">Current facilities CSV</label>
-              <input
-                type="file"
-                accept=".csv"
-                onChange={(e) => {
-                  setCurrentFile(e.target.files?.[0] ?? null);
-                  resetAllMessages();
-                }}
-              />
-            </div>
+            <div className="flex flex-wrap gap-3">
+              <button type="button" onClick={downloadDemandTemplate} className={ghostButtonClass}>
+                Download demand template
+              </button>
 
-            <div className="space-y-2">
-              <label className="block font-medium">Candidate facilities CSV</label>
-              <input
-                type="file"
-                accept=".csv"
-                onChange={(e) => {
-                  setCandidateFile(e.target.files?.[0] ?? null);
-                  resetAllMessages();
-                }}
-              />
+              <button type="button" onClick={downloadFacilityTemplate} className={ghostButtonClass}>
+                Download facility template
+              </button>
+
+              <button type="button" onClick={downloadDemandSample} className={ghostButtonClass}>
+                Download demand sample
+              </button>
+
+              <button
+                type="button"
+                onClick={downloadCurrentFacilitiesSample}
+                className={ghostButtonClass}
+              >
+                Download current facilities sample
+              </button>
+
+              <button
+                type="button"
+                onClick={downloadCandidateFacilitiesSample}
+                className={ghostButtonClass}
+              >
+                Download candidate facilities sample
+              </button>
             </div>
           </div>
 
-          <div className="max-w-xs space-y-2">
-            <label htmlFor="p-value" className="block font-medium">
+          <div className="grid gap-6 md:grid-cols-3" key={fileInputKey}>
+            <UploadField
+              inputId="demand-upload"
+              label="Demand CSV"
+              description="Rows with demand IDs, coordinates, and weights."
+              file={demandFile}
+              onFileChange={(file) => {
+                setDemandFile(file);
+                resetAllMessages();
+              }}
+            />
+
+            <UploadField
+              inputId="current-upload"
+              label="Current facilities CSV"
+              description="Currently open facilities used for the baseline."
+              file={currentFile}
+              onFileChange={(file) => {
+                setCurrentFile(file);
+                resetAllMessages();
+              }}
+            />
+
+            <UploadField
+              inputId="candidate-upload"
+              label="Candidate facilities CSV"
+              description="Possible facilities the optimiser may choose from."
+              file={candidateFile}
+              onFileChange={(file) => {
+                setCandidateFile(file);
+                resetAllMessages();
+              }}
+            />
+          </div>
+
+          <div className="max-w-sm space-y-2">
+            <label htmlFor="p-value" className="block text-sm font-semibold text-slate-900">
               p (must match current facility count for this comparison)
             </label>
             <input
@@ -599,17 +726,13 @@ export default function Home() {
               step="1"
               value={pValue}
               onChange={(e) => setPValue(e.target.value)}
-              className="w-full rounded-xl border px-3 py-2"
+              className={inputClass}
+              placeholder="Enter facility count"
             />
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={handleRunDemo}
-              disabled={anyBusy}
-              className="rounded-xl border px-4 py-2 font-medium"
-            >
+            <button type="button" onClick={handleRunDemo} disabled={anyBusy} className={demoButtonClass}>
               {runningDemo ? "Running demo..." : "Run built-in demo"}
             </button>
 
@@ -617,7 +740,7 @@ export default function Home() {
               type="button"
               onClick={() => handleValidateFacilities("current")}
               disabled={anyBusy}
-              className="rounded-xl border px-4 py-2 font-medium"
+              className={secondaryButtonClass}
             >
               {validating ? "Validating..." : "Validate demand + current"}
             </button>
@@ -626,7 +749,7 @@ export default function Home() {
               type="button"
               onClick={() => handleValidateFacilities("candidate")}
               disabled={anyBusy}
-              className="rounded-xl border px-4 py-2 font-medium"
+              className={secondaryButtonClass}
             >
               {validating ? "Validating..." : "Validate demand + candidate pool"}
             </button>
@@ -635,7 +758,7 @@ export default function Home() {
               type="button"
               onClick={handleBaselineSolve}
               disabled={anyBusy}
-              className="rounded-xl border px-4 py-2 font-medium"
+              className={primaryButtonClass}
             >
               {baselineSolving ? "Solving baseline..." : "Run current baseline"}
             </button>
@@ -644,7 +767,7 @@ export default function Home() {
               type="button"
               onClick={handleCompare}
               disabled={anyBusy}
-              className="rounded-xl border px-4 py-2 font-medium"
+              className={compareButtonClass}
             >
               {comparing ? "Comparing..." : "Run current vs optimised comparison"}
             </button>
@@ -653,7 +776,7 @@ export default function Home() {
               type="button"
               onClick={handleResetWorkspace}
               disabled={anyBusy}
-              className="rounded-xl border px-4 py-2 font-medium"
+              className={secondaryButtonClass}
             >
               Reset workspace
             </button>
@@ -661,10 +784,10 @@ export default function Home() {
 
           {statusMessage && (
             <div
-              className={`rounded-xl border p-4 text-sm ${
+              className={`rounded-2xl border p-4 text-sm ${
                 statusTone === "success"
-                  ? "border-green-300 bg-green-50"
-                  : "border-blue-300 bg-blue-50"
+                  ? "border-green-200 bg-green-50 text-green-800"
+                  : "border-blue-200 bg-blue-50 text-blue-800"
               }`}
             >
               {statusMessage}
@@ -672,7 +795,7 @@ export default function Home() {
           )}
 
           {error && (
-            <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm">
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
               {error}
             </div>
           )}
@@ -680,7 +803,7 @@ export default function Home() {
 
         {validationResult && (
           <div className="space-y-4">
-            <p className="text-sm text-gray-600">{validationLabel}</p>
+            <p className="text-sm text-slate-600">{validationLabel}</p>
             <div className="grid gap-6 md:grid-cols-2">
               {renderPreviewCard(validationResult.demand, "Demand file")}
               {renderPreviewCard(
@@ -693,6 +816,7 @@ export default function Home() {
           </div>
         )}
 
+        {renderWorkspaceHint()}
         {baselineResult && renderBaselineResults(baselineResult)}
         {comparisonResult && renderComparisonResults(comparisonResult)}
       </div>
