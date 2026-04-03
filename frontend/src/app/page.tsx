@@ -1,6 +1,21 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import dynamic from "next/dynamic";
+import { useState } from "react";
+import type {
+  AssignmentLine,
+  DemandPoint,
+  FacilityPoint,
+} from "@/components/comparison-map";
+import {
+  downloadAssignmentsCsv,
+  downloadComparisonJson,
+  downloadFacilitySummaryCsv,
+} from "@/lib/export";
+
+const ComparisonMap = dynamic(() => import("@/components/comparison-map"), {
+  ssr: false,
+});
 
 type FileSummary = {
   file_kind: "demand" | "candidate";
@@ -32,69 +47,86 @@ type BaselineSolveResponse = {
   assignment_rows: BaselineAssignmentRow[];
 };
 
-type OptimisationAssignmentRow = {
+type ComparisonAssignmentRow = {
   demand_id: string;
   candidate_id: string;
   weighted_cost: number;
 };
 
-type OptimisationComparisonResponse = {
+type CurrentVsOptimisedComparisonResponse = {
   p: number;
+  current_facility_count: number;
+  candidate_pool_count: number;
   baseline_total_weighted_cost: number;
   optimised_total_weighted_cost: number;
   improvement_pct: number;
+  current_facility_ids: string[];
   selected_candidate_ids: string[];
-  baseline_assignments: OptimisationAssignmentRow[];
-  optimised_assignments: OptimisationAssignmentRow[];
+  baseline_assignments: ComparisonAssignmentRow[];
+  optimised_assignments: ComparisonAssignmentRow[];
+  demand_points: DemandPoint[];
+  current_facilities: FacilityPoint[];
+  selected_facilities: FacilityPoint[];
+  baseline_assignment_lines: AssignmentLine[];
+  optimised_assignment_lines: AssignmentLine[];
 };
 
 const API_BASE = "http://127.0.0.1:8000/api";
 
 export default function Home() {
   const [demandFile, setDemandFile] = useState<File | null>(null);
+  const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [candidateFile, setCandidateFile] = useState<File | null>(null);
-  const [pValue, setPValue] = useState("2");
+  const [pValue, setPValue] = useState("");
 
   const [validationResult, setValidationResult] = useState<ValidationResponse | null>(null);
+  const [validationLabel, setValidationLabel] = useState("");
   const [baselineResult, setBaselineResult] = useState<BaselineSolveResponse | null>(null);
-  const [comparisonResult, setComparisonResult] = useState<OptimisationComparisonResponse | null>(null);
+  const [comparisonResult, setComparisonResult] =
+    useState<CurrentVsOptimisedComparisonResponse | null>(null);
 
   const [error, setError] = useState("");
   const [validating, setValidating] = useState(false);
   const [baselineSolving, setBaselineSolving] = useState(false);
-  const [optimising, setOptimising] = useState(false);
+  const [comparing, setComparing] = useState(false);
 
-  function resetResults() {
+  function clearResults() {
     setBaselineResult(null);
     setComparisonResult(null);
   }
 
-  function handleDemandFileChange(file: File | null) {
-    setDemandFile(file);
-    resetResults();
-    setError("");
-  }
-
-  function handleCandidateFileChange(file: File | null) {
-    setCandidateFile(file);
-    resetResults();
-    setError("");
-  }
-
-  async function handleValidate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function resetAllMessages() {
     setError("");
     setValidationResult(null);
-    resetResults();
+    setValidationLabel("");
+    clearResults();
+  }
 
-    if (!demandFile || !candidateFile) {
-      setError("Please upload both demand and candidate CSV files.");
+  async function handleValidateFacilities(mode: "current" | "candidate") {
+    setError("");
+    setValidationResult(null);
+    setValidationLabel("");
+    clearResults();
+
+    if (!demandFile) {
+      setError("Please upload the demand CSV.");
+      return;
+    }
+
+    const facilityFile = mode === "current" ? currentFile : candidateFile;
+
+    if (!facilityFile) {
+      setError(
+        mode === "current"
+          ? "Please upload the current facilities CSV."
+          : "Please upload the candidate facilities CSV."
+      );
       return;
     }
 
     const formData = new FormData();
     formData.append("demand_file", demandFile);
-    formData.append("candidate_file", candidateFile);
+    formData.append("candidate_file", facilityFile);
 
     try {
       setValidating(true);
@@ -111,6 +143,11 @@ export default function Home() {
       }
 
       setValidationResult(data);
+      setValidationLabel(
+        mode === "current"
+          ? "Validated pair: demand + current facilities"
+          : "Validated pair: demand + candidate pool"
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong.";
       setError(message);
@@ -124,14 +161,14 @@ export default function Home() {
     setBaselineResult(null);
     setComparisonResult(null);
 
-    if (!demandFile || !candidateFile) {
-      setError("Please upload both demand and candidate CSV files.");
+    if (!demandFile || !currentFile) {
+      setError("Please upload both the demand CSV and the current facilities CSV.");
       return;
     }
 
     const formData = new FormData();
     formData.append("demand_file", demandFile);
-    formData.append("candidate_file", candidateFile);
+    formData.append("candidate_file", currentFile);
     formData.append("graph_id", "dubai_micro");
 
     try {
@@ -145,7 +182,7 @@ export default function Home() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || "Baseline solve failed.");
+        throw new Error(data.detail || "Current baseline solve failed.");
       }
 
       setBaselineResult(data);
@@ -157,13 +194,15 @@ export default function Home() {
     }
   }
 
-  async function handlePMedianSolve() {
+  async function handleCompare() {
     setError("");
     setComparisonResult(null);
     setBaselineResult(null);
 
-    if (!demandFile || !candidateFile) {
-      setError("Please upload both demand and candidate CSV files.");
+    if (!demandFile || !currentFile || !candidateFile) {
+      setError(
+        "Please upload demand, current facilities, and candidate facilities CSV files."
+      );
       return;
     }
 
@@ -176,14 +215,15 @@ export default function Home() {
 
     const formData = new FormData();
     formData.append("demand_file", demandFile);
+    formData.append("current_file", currentFile);
     formData.append("candidate_file", candidateFile);
     formData.append("graph_id", "dubai_micro");
     formData.append("p", String(parsedP));
 
     try {
-      setOptimising(true);
+      setComparing(true);
 
-      const response = await fetch(`${API_BASE}/solve-p-median`, {
+      const response = await fetch(`${API_BASE}/compare-current-vs-p-median`, {
         method: "POST",
         body: formData,
       });
@@ -191,7 +231,7 @@ export default function Home() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || "p-median solve failed.");
+        throw new Error(data.detail || "Comparison run failed.");
       }
 
       setComparisonResult(data);
@@ -199,15 +239,15 @@ export default function Home() {
       const message = err instanceof Error ? err.message : "Something went wrong.";
       setError(message);
     } finally {
-      setOptimising(false);
+      setComparing(false);
     }
   }
 
-  function renderPreviewCard(summary: FileSummary) {
+  function renderPreviewCard(summary: FileSummary, titleOverride?: string) {
     return (
       <div className="rounded-2xl border p-6 space-y-4">
         <div>
-          <h2 className="text-xl font-semibold capitalize">{summary.file_kind} file</h2>
+          <h2 className="text-xl font-semibold">{titleOverride ?? `${summary.file_kind} file`}</h2>
           <p className="text-sm text-gray-600">
             {summary.filename} · {summary.row_count} rows
           </p>
@@ -251,9 +291,9 @@ export default function Home() {
     return (
       <div className="rounded-2xl border p-6 space-y-6">
         <div className="space-y-1">
-          <h2 className="text-2xl font-semibold">Baseline solve result</h2>
+          <h2 className="text-2xl font-semibold">Current network baseline</h2>
           <p className="text-sm text-gray-600">
-            Graph: {result.graph_id} · Demand points: {result.demand_count} · Candidate sites:{" "}
+            Graph: {result.graph_id} · Demand points: {result.demand_count} · Current facilities:{" "}
             {result.candidate_count}
           </p>
         </div>
@@ -271,8 +311,8 @@ export default function Home() {
                 <th className="border px-3 py-2 text-left">Demand ID</th>
                 <th className="border px-3 py-2 text-left">Weight</th>
                 <th className="border px-3 py-2 text-left">Demand node</th>
-                <th className="border px-3 py-2 text-left">Assigned candidate</th>
-                <th className="border px-3 py-2 text-left">Candidate node</th>
+                <th className="border px-3 py-2 text-left">Assigned current facility</th>
+                <th className="border px-3 py-2 text-left">Facility node</th>
                 <th className="border px-3 py-2 text-left">Weighted cost (km)</th>
               </tr>
             </thead>
@@ -294,10 +334,7 @@ export default function Home() {
     );
   }
 
-  function renderOptimisationTable(
-    title: string,
-    rows: OptimisationAssignmentRow[],
-  ) {
+  function renderComparisonTable(title: string, rows: ComparisonAssignmentRow[]) {
     return (
       <div className="overflow-x-auto">
         <p className="font-medium mb-2">{title}</p>
@@ -305,7 +342,7 @@ export default function Home() {
           <thead>
             <tr>
               <th className="border px-3 py-2 text-left">Demand ID</th>
-              <th className="border px-3 py-2 text-left">Assigned candidate</th>
+              <th className="border px-3 py-2 text-left">Assigned facility</th>
               <th className="border px-3 py-2 text-left">Weighted cost</th>
             </tr>
           </thead>
@@ -323,17 +360,20 @@ export default function Home() {
     );
   }
 
-  function renderComparisonResults(result: OptimisationComparisonResponse) {
+  function renderComparisonResults(result: CurrentVsOptimisedComparisonResponse) {
     return (
       <div className="rounded-2xl border p-6 space-y-6">
         <div className="space-y-1">
-          <h2 className="text-2xl font-semibold">p-median comparison result</h2>
-          <p className="text-sm text-gray-600">Selected facility count (p): {result.p}</p>
+          <h2 className="text-2xl font-semibold">Current vs optimised comparison</h2>
+          <p className="text-sm text-gray-600">
+            Current facilities: {result.current_facility_count} · Candidate pool:{" "}
+            {result.candidate_pool_count} · p: {result.p}
+          </p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
           <div className="rounded-xl border p-4">
-            <p className="text-sm text-gray-600">Baseline weighted cost</p>
+            <p className="text-sm text-gray-600">Current weighted cost</p>
             <p className="text-2xl font-bold">
               {result.baseline_total_weighted_cost.toFixed(3)}
             </p>
@@ -352,56 +392,129 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="rounded-xl border p-4">
-          <p className="text-sm text-gray-600">Selected facility IDs</p>
-          <p className="text-base font-medium">
-            {result.selected_candidate_ids.length > 0
-              ? result.selected_candidate_ids.join(", ")
-              : "No facilities selected"}
-          </p>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-xl border p-4">
+            <p className="text-sm text-gray-600">Current facility IDs</p>
+            <p className="text-base font-medium">
+              {result.current_facility_ids.join(", ")}
+            </p>
+          </div>
+
+          <div className="rounded-xl border p-4">
+            <p className="text-sm text-gray-600">Selected optimised facility IDs</p>
+            <p className="text-base font-medium">
+              {result.selected_candidate_ids.join(", ")}
+            </p>
+          </div>
         </div>
 
-        {renderOptimisationTable("Baseline assignments", result.baseline_assignments)}
-        {renderOptimisationTable("Optimised assignments", result.optimised_assignments)}
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => downloadComparisonJson(result)}
+            className="rounded-xl border px-4 py-2 font-medium"
+          >
+            Download JSON
+          </button>
+
+          <button
+            type="button"
+            onClick={() => downloadAssignmentsCsv(result)}
+            className="rounded-xl border px-4 py-2 font-medium"
+          >
+            Download assignments CSV
+          </button>
+
+          <button
+            type="button"
+            onClick={() => downloadFacilitySummaryCsv(result)}
+            className="rounded-xl border px-4 py-2 font-medium"
+          >
+            Download facilities CSV
+          </button>
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-2">
+          <ComparisonMap
+            title="Current network map"
+            demandPoints={result.demand_points}
+            facilityPoints={result.current_facilities}
+            assignmentLines={result.baseline_assignment_lines}
+            facilityLabel="Current facility"
+            facilityColor="#ea580c"
+            lineColor="#fb923c"
+          />
+
+          <ComparisonMap
+            title="Optimised network map"
+            demandPoints={result.demand_points}
+            facilityPoints={result.selected_facilities}
+            assignmentLines={result.optimised_assignment_lines}
+            facilityLabel="Selected facility"
+            facilityColor="#16a34a"
+            lineColor="#4ade80"
+          />
+        </div>
+
+        {renderComparisonTable("Baseline assignments", result.baseline_assignments)}
+        {renderComparisonTable("Optimised assignments", result.optimised_assignments)}
       </div>
     );
   }
 
   return (
     <main className="min-h-screen p-8">
-      <div className="mx-auto max-w-6xl space-y-8">
+      <div className="mx-auto max-w-7xl space-y-8">
         <div className="space-y-2">
           <h1 className="text-3xl font-bold">GeoOps Studio</h1>
           <p className="text-lg">
-            Upload demand and candidate facility CSVs, validate them, run the baseline
-            network assignment workflow, and compare against p-median optimisation.
+            Upload demand, current facilities, and candidate facilities to compare the
+            current network against a like-for-like p-median redesign.
           </p>
         </div>
 
-        <form onSubmit={handleValidate} className="rounded-2xl border p-6 space-y-6">
-          <div className="grid gap-6 md:grid-cols-2">
+        <div className="rounded-2xl border p-6 space-y-6">
+          <div className="grid gap-6 md:grid-cols-3">
             <div className="space-y-2">
               <label className="block font-medium">Demand CSV</label>
               <input
                 type="file"
                 accept=".csv"
-                onChange={(e) => handleDemandFileChange(e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  setDemandFile(e.target.files?.[0] ?? null);
+                  resetAllMessages();
+                }}
               />
             </div>
 
             <div className="space-y-2">
-              <label className="block font-medium">Candidate CSV</label>
+              <label className="block font-medium">Current facilities CSV</label>
               <input
                 type="file"
                 accept=".csv"
-                onChange={(e) => handleCandidateFileChange(e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  setCurrentFile(e.target.files?.[0] ?? null);
+                  resetAllMessages();
+                }}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="block font-medium">Candidate facilities CSV</label>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={(e) => {
+                  setCandidateFile(e.target.files?.[0] ?? null);
+                  resetAllMessages();
+                }}
               />
             </div>
           </div>
 
           <div className="max-w-xs space-y-2">
             <label htmlFor="p-value" className="block font-medium">
-              p-median facility count (p)
+              p (must match current facility count for this comparison)
             </label>
             <input
               id="p-value"
@@ -416,11 +529,21 @@ export default function Home() {
 
           <div className="flex flex-wrap gap-3">
             <button
-              type="submit"
+              type="button"
+              onClick={() => handleValidateFacilities("current")}
               disabled={validating}
               className="rounded-xl border px-4 py-2 font-medium"
             >
-              {validating ? "Validating..." : "Validate files"}
+              {validating ? "Validating..." : "Validate demand + current"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleValidateFacilities("candidate")}
+              disabled={validating}
+              className="rounded-xl border px-4 py-2 font-medium"
+            >
+              {validating ? "Validating..." : "Validate demand + candidate pool"}
             </button>
 
             <button
@@ -429,16 +552,16 @@ export default function Home() {
               disabled={baselineSolving}
               className="rounded-xl border px-4 py-2 font-medium"
             >
-              {baselineSolving ? "Solving baseline..." : "Run baseline solve"}
+              {baselineSolving ? "Solving baseline..." : "Run current baseline"}
             </button>
 
             <button
               type="button"
-              onClick={handlePMedianSolve}
-              disabled={optimising}
+              onClick={handleCompare}
+              disabled={comparing}
               className="rounded-xl border px-4 py-2 font-medium"
             >
-              {optimising ? "Optimising..." : "Run p-median comparison"}
+              {comparing ? "Comparing..." : "Run current vs optimised comparison"}
             </button>
           </div>
 
@@ -447,12 +570,20 @@ export default function Home() {
               {error}
             </div>
           )}
-        </form>
+        </div>
 
         {validationResult && (
-          <div className="grid gap-6 md:grid-cols-2">
-            {renderPreviewCard(validationResult.demand)}
-            {renderPreviewCard(validationResult.candidate)}
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">{validationLabel}</p>
+            <div className="grid gap-6 md:grid-cols-2">
+              {renderPreviewCard(validationResult.demand, "Demand file")}
+              {renderPreviewCard(
+                validationResult.candidate,
+                validationLabel.includes("current")
+                  ? "Current facilities file"
+                  : "Candidate pool file"
+              )}
+            </div>
           </div>
         )}
 
