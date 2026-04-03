@@ -12,6 +12,7 @@ import {
   downloadComparisonJson,
   downloadFacilitySummaryCsv,
 } from "@/lib/export";
+import { API_BASE } from "@/lib/config";
 
 const ComparisonMap = dynamic(() => import("@/components/comparison-map"), {
   ssr: false,
@@ -70,8 +71,6 @@ type CurrentVsOptimisedComparisonResponse = {
   baseline_assignment_lines: AssignmentLine[];
   optimised_assignment_lines: AssignmentLine[];
 };
-
-const API_BASE = "http://127.0.0.1:8000/api";
 
 export default function Home() {
   const [demandFile, setDemandFile] = useState<File | null>(null);

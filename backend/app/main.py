@@ -7,6 +7,7 @@ from backend.app.api.routes_health import router as health_router
 from backend.app.api.routes_optimise import router as optimise_router
 from backend.app.api.routes_solve import router as solve_router
 from backend.app.api.routes_upload import router as upload_router
+from backend.app.config import get_cors_origins
 
 app = FastAPI(
     title="GeoOps Studio API",
@@ -16,7 +17,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
