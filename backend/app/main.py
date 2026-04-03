@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.routes_compare import router as compare_router
+from backend.app.api.routes_demo import router as demo_router
 from backend.app.api.routes_health import router as health_router
 from backend.app.api.routes_optimise import router as optimise_router
 from backend.app.api.routes_solve import router as solve_router
@@ -26,6 +27,7 @@ app.include_router(upload_router)
 app.include_router(solve_router)
 app.include_router(optimise_router)
 app.include_router(compare_router)
+app.include_router(demo_router)
 
 
 @app.get("/")

@@ -86,24 +86,57 @@ export default function Home() {
     useState<CurrentVsOptimisedComparisonResponse | null>(null);
 
   const [error, setError] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
+  const [statusTone, setStatusTone] = useState<"info" | "success" | "">("");
+
   const [validating, setValidating] = useState(false);
   const [baselineSolving, setBaselineSolving] = useState(false);
   const [comparing, setComparing] = useState(false);
+  const [runningDemo, setRunningDemo] = useState(false);
+
+  const [fileInputKey, setFileInputKey] = useState(0);
+
+  const anyBusy = validating || baselineSolving || comparing || runningDemo;
 
   function clearResults() {
     setBaselineResult(null);
     setComparisonResult(null);
   }
 
-  function resetAllMessages() {
+  function clearFeedback() {
     setError("");
+    setStatusMessage("");
+    setStatusTone("");
+  }
+
+  function resetAllMessages() {
+    clearFeedback();
     setValidationResult(null);
     setValidationLabel("");
     clearResults();
   }
 
-  async function handleValidateFacilities(mode: "current" | "candidate") {
+  function handleResetWorkspace() {
+    setDemandFile(null);
+    setCurrentFile(null);
+    setCandidateFile(null);
+    setPValue("");
+    setValidationResult(null);
+    setValidationLabel("");
+    setBaselineResult(null);
+    setComparisonResult(null);
+    clearFeedback();
+    setFileInputKey((prev) => prev + 1);
+  }
+
+  function setStatus(message: string, tone: "info" | "success") {
+    setStatusMessage(message);
+    setStatusTone(tone);
     setError("");
+  }
+
+  async function handleValidateFacilities(mode: "current" | "candidate") {
+    clearFeedback();
     setValidationResult(null);
     setValidationLabel("");
     clearResults();
@@ -148,6 +181,12 @@ export default function Home() {
           ? "Validated pair: demand + current facilities"
           : "Validated pair: demand + candidate pool"
       );
+      setStatus(
+        mode === "current"
+          ? "Current facilities file validated successfully."
+          : "Candidate pool file validated successfully.",
+        "success"
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong.";
       setError(message);
@@ -157,7 +196,7 @@ export default function Home() {
   }
 
   async function handleBaselineSolve() {
-    setError("");
+    clearFeedback();
     setBaselineResult(null);
     setComparisonResult(null);
 
@@ -186,6 +225,7 @@ export default function Home() {
       }
 
       setBaselineResult(data);
+      setStatus("Current network baseline finished successfully.", "success");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong.";
       setError(message);
@@ -195,7 +235,7 @@ export default function Home() {
   }
 
   async function handleCompare() {
-    setError("");
+    clearFeedback();
     setComparisonResult(null);
     setBaselineResult(null);
 
@@ -235,11 +275,45 @@ export default function Home() {
       }
 
       setComparisonResult(data);
+      setStatus("Current vs optimised comparison finished successfully.", "success");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong.";
       setError(message);
     } finally {
       setComparing(false);
+    }
+  }
+
+  async function handleRunDemo() {
+    clearFeedback();
+    setValidationResult(null);
+    setValidationLabel("");
+    clearResults();
+
+    try {
+      setRunningDemo(true);
+
+      const response = await fetch(`${API_BASE}/demo/current-vs-optimised`, {
+        method: "GET",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Built-in demo run failed.");
+      }
+
+      setComparisonResult(data);
+      setPValue(String(data.p));
+      setStatus(
+        "Built-in demo scenario loaded. Use this for quick smoke tests and screenshots.",
+        "success"
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Something went wrong.";
+      setError(message);
+    } finally {
+      setRunningDemo(false);
     }
   }
 
@@ -471,10 +545,13 @@ export default function Home() {
             Upload demand, current facilities, and candidate facilities to compare the
             current network against a like-for-like p-median redesign.
           </p>
+          <p className="text-sm text-gray-600">
+            Built-in demo mode is now the fastest path for smoke tests and screenshots.
+          </p>
         </div>
 
         <div className="rounded-2xl border p-6 space-y-6">
-          <div className="grid gap-6 md:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-3" key={fileInputKey}>
             <div className="space-y-2">
               <label className="block font-medium">Demand CSV</label>
               <input
@@ -530,8 +607,17 @@ export default function Home() {
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
+              onClick={handleRunDemo}
+              disabled={anyBusy}
+              className="rounded-xl border px-4 py-2 font-medium"
+            >
+              {runningDemo ? "Running demo..." : "Run built-in demo"}
+            </button>
+
+            <button
+              type="button"
               onClick={() => handleValidateFacilities("current")}
-              disabled={validating}
+              disabled={anyBusy}
               className="rounded-xl border px-4 py-2 font-medium"
             >
               {validating ? "Validating..." : "Validate demand + current"}
@@ -540,7 +626,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => handleValidateFacilities("candidate")}
-              disabled={validating}
+              disabled={anyBusy}
               className="rounded-xl border px-4 py-2 font-medium"
             >
               {validating ? "Validating..." : "Validate demand + candidate pool"}
@@ -549,7 +635,7 @@ export default function Home() {
             <button
               type="button"
               onClick={handleBaselineSolve}
-              disabled={baselineSolving}
+              disabled={anyBusy}
               className="rounded-xl border px-4 py-2 font-medium"
             >
               {baselineSolving ? "Solving baseline..." : "Run current baseline"}
@@ -558,12 +644,33 @@ export default function Home() {
             <button
               type="button"
               onClick={handleCompare}
-              disabled={comparing}
+              disabled={anyBusy}
               className="rounded-xl border px-4 py-2 font-medium"
             >
               {comparing ? "Comparing..." : "Run current vs optimised comparison"}
             </button>
+
+            <button
+              type="button"
+              onClick={handleResetWorkspace}
+              disabled={anyBusy}
+              className="rounded-xl border px-4 py-2 font-medium"
+            >
+              Reset workspace
+            </button>
           </div>
+
+          {statusMessage && (
+            <div
+              className={`rounded-xl border p-4 text-sm ${
+                statusTone === "success"
+                  ? "border-green-300 bg-green-50"
+                  : "border-blue-300 bg-blue-50"
+              }`}
+            >
+              {statusMessage}
+            </div>
+          )}
 
           {error && (
             <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm">
