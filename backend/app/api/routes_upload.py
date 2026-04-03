@@ -1,7 +1,7 @@
 from fastapi import APIRouter, File, UploadFile
 
-from ..models.file_contracts import ValidationResponse
-from ..services.validation import validate_csv_file
+from backend.app.models.file_contracts import ValidationResponse
+from backend.app.services.validation import validate_csv_file
 
 router = APIRouter(prefix="/api", tags=["files"])
 

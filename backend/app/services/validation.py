@@ -4,7 +4,7 @@ from typing import Literal
 import pandas as pd
 from fastapi import HTTPException, UploadFile
 
-from ..models.file_contracts import FileSummary
+from backend.app.models.file_contracts import FileSummary
 
 FileKind = Literal["demand", "candidate"]
 
@@ -20,6 +20,8 @@ def _read_csv(upload_file: UploadFile) -> pd.DataFrame:
         raise HTTPException(status_code=400, detail=f"{filename} must be a CSV file.")
 
     raw_bytes = upload_file.file.read()
+    upload_file.file.seek(0)
+
     try:
         decoded = raw_bytes.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
@@ -98,10 +100,15 @@ def _coerce_and_validate_common(df: pd.DataFrame, file_kind: FileKind, filename:
     return df
 
 
-def validate_csv_file(upload_file: UploadFile, file_kind: FileKind) -> FileSummary:
+def read_and_validate_csv_df(upload_file: UploadFile, file_kind: FileKind) -> pd.DataFrame:
     filename = upload_file.filename or f"{file_kind}.csv"
     df = _read_csv(upload_file)
-    df = _coerce_and_validate_common(df, file_kind, filename)
+    return _coerce_and_validate_common(df, file_kind, filename)
+
+
+def validate_csv_file(upload_file: UploadFile, file_kind: FileKind) -> FileSummary:
+    filename = upload_file.filename or f"{file_kind}.csv"
+    df = read_and_validate_csv_df(upload_file, file_kind)
 
     preview_rows = df.head(5).to_dict(orient="records")
 
