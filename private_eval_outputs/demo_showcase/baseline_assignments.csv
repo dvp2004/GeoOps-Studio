@@ -1,0 +1,7 @@
+demand_id,candidate_id,weighted_cost
+D001,CUR001,42.0
+D002,CUR001,0.0
+D003,CUR001,0.0
+D004,CUR001,33.25
+D005,CUR002,24.5
+D006,CUR002,0.0

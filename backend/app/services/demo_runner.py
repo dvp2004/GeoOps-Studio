@@ -23,8 +23,8 @@ def _read_demo_csv(filename: str) -> pd.DataFrame:
 
 def run_demo_current_vs_optimised() -> CurrentVsOptimisedComparisonResponse:
     demand_df = _read_demo_csv("demand_example.csv")
-    current_df = _read_demo_csv("current_example_2sites.csv")
-    candidate_df = _read_demo_csv("candidate_example.csv")
+    current_df = _read_demo_csv("current_example_2sites_showcase.csv")
+    candidate_df = _read_demo_csv("candidate_example_showcase.csv")
 
     return solve_current_vs_p_median(
         demand_df=demand_df,

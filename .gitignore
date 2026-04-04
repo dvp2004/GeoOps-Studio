@@ -27,3 +27,5 @@ tmp/
 # Environment
 .env
 .env.local
+
+echo private_eval_outputs/>> .gitignore
