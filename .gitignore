@@ -1,6 +1,9 @@
+@'
 # Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 .venv/
 venv/
 env/
@@ -23,9 +26,10 @@ uploads/
 results/
 tmp/
 .cache/
+private_eval_outputs/
 
 # Environment
 .env
-.env.local
-
-echo private_eval_outputs/>> .gitignore
+.env.*
+!.env.example
+'@ | Set-Content .gitignore
