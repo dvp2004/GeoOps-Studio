@@ -1,9 +1,14 @@
-@'
 # GeoOps Studio
 
 GeoOps Studio is a public web app for **network-based facility placement and reassignment optimisation**.
 
 The current MVP is framed around one practical use case: comparing a **current facility network** against a **like-for-like p-median redesign** on a small public road-network model.
+
+## Live app
+
+- **Frontend:** `https://geoops-studio.vercel.app/`
+- **Backend API:** `https://geoops-studio-api.onrender.com/`
+- **Demo endpoint:** `https://geoops-studio-api.onrender.com/api/demo/current-vs-optimised`
 
 ## What the app does
 
