@@ -3,6 +3,9 @@ from __future__ import annotations
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from backend.app.schemas import CurrentVsOptimisedComparisonResponse
+from backend.app.services.generic_response_normaliser import (
+    normalise_generic_compare_payload,
+)
 from backend.app.services.solve_current_vs_p_median import solve_current_vs_p_median
 from backend.app.services.validation import read_and_validate_csv_df
 
@@ -25,13 +28,14 @@ def compare_current_vs_p_median_route(
     candidate_df = read_and_validate_csv_df(candidate_file, "candidate")
 
     try:
-        return solve_current_vs_p_median(
+        raw_payload = solve_current_vs_p_median(
             demand_df=demand_df,
             current_df=current_df,
             candidate_df=candidate_df,
             p=p,
             graph_id=graph_id,
         )
+        return normalise_generic_compare_payload(raw_payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:

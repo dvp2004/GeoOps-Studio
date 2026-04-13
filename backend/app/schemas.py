@@ -1,8 +1,6 @@
 from __future__ import annotations
-
 from typing import List
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class AssignmentRow(BaseModel):
@@ -44,19 +42,23 @@ class OptimisationComparisonResponse(BaseModel):
     optimised_assignments: List[AssignmentRow]
 
 
+class GenericCompareSummary(BaseModel):
+    current_total_cost: float | None = None
+    optimised_total_cost: float | None = None
+    absolute_improvement: float | None = None
+    improvement_pct: float | None = None
+    p: int | None = None
+
+
+class GenericOptimisedFacility(BaseModel):
+    id: str
+    label: str
+    lat: float
+    lng: float
+
+
 class CurrentVsOptimisedComparisonResponse(BaseModel):
-    p: int = Field(..., ge=1)
-    current_facility_count: int = Field(..., ge=1)
-    candidate_pool_count: int = Field(..., ge=1)
-    baseline_total_weighted_cost: float
-    optimised_total_weighted_cost: float
-    improvement_pct: float
-    current_facility_ids: List[str]
-    selected_candidate_ids: List[str]
-    baseline_assignments: List[AssignmentRow]
-    optimised_assignments: List[AssignmentRow]
-    demand_points: List[DemandPoint]
-    current_facilities: List[FacilityPoint]
-    selected_facilities: List[FacilityPoint]
-    baseline_assignment_lines: List[AssignmentLine]
-    optimised_assignment_lines: List[AssignmentLine]
+    model_config = ConfigDict(extra="allow")
+
+    summary: GenericCompareSummary | None = None
+    optimised_facilities: list[GenericOptimisedFacility] = []

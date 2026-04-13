@@ -32,3 +32,22 @@ private_eval_workspace/
 .env
 .env.*
 !.env.example
+
+# Private / internal assets that must never go public
+private_bundles/**
+!private_bundles/.gitkeep
+private_eval/
+private_eval_outputs/
+private_eval_workspace/
+
+# Private notes / rebuild docs
+Private Talabat*.md
+Talabat_Datasets_summary.md
+
+# Local private sanity scripts
+run_private_sanity_top1000.py
+run_private_sanity_top5000.py
+
+# Keep public screenshots, ignore private reshuffling screenshots
+docs/screenshots/reshuffling-*.png
+docs/screenshots/*vendor-explorer*.png

@@ -1,2 +1,0 @@
-p,current_facility_count,candidate_pool_count,baseline_total_weighted_cost,optimised_total_weighted_cost,improvement_pct,current_facility_ids,selected_candidate_ids
-2,2,4,99.75,75.25,24.561403508771928,"CUR001,CUR002","C002,ALT001"

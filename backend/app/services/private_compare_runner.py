@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import time
+from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
@@ -8,6 +10,7 @@ import pandas as pd
 from backend.app.services.optimisation_service import build_current_vs_optimised_payload
 from engine.network.cost_matrix import (
     compute_baseline_assignment,
+    compute_nearest_candidate_assignment,
     compute_weighted_cost_matrix,
 )
 from engine.network.local_graph_loader import load_local_graph
@@ -88,6 +91,126 @@ def _validate_facility_df(facility_df: pd.DataFrame, label: str) -> pd.DataFrame
     return df[["id", "lat", "lng"]].reset_index(drop=True)
 
 
+def _same_facility_sites(current_df: pd.DataFrame, candidate_df: pd.DataFrame) -> bool:
+    cols = ["id", "lat", "lng"]
+    a = current_df[cols].copy().sort_values("id").reset_index(drop=True)
+    b = candidate_df[cols].copy().sort_values("id").reset_index(drop=True)
+    return a.equals(b)
+
+
+def _normalise_cache_key(path: str | Path) -> str:
+    return str(Path(path).resolve())
+
+
+@lru_cache(maxsize=4)
+def _load_local_graph_cached(nodes_csv_path: str, edges_csv_path: str):
+    return load_local_graph(
+        nodes_csv_path=nodes_csv_path,
+        edges_csv_path=edges_csv_path,
+    )
+
+
+@lru_cache(maxsize=4)
+def _build_snap_index_cached(nodes_csv_path: str, edges_csv_path: str):
+    loaded_graph = _load_local_graph_cached(nodes_csv_path, edges_csv_path)
+    return build_node_snap_index(loaded_graph.nodes_df)
+
+
+def _build_assignment_rows_and_lines_from_costs(
+    snapped_demand: pd.DataFrame,
+    snapped_facilities: pd.DataFrame,
+    assignment_indices: list[int],
+    weighted_costs,
+) -> tuple[list[dict], list[dict]]:
+    assignment_rows: list[dict] = []
+    assignment_lines: list[dict] = []
+
+    for demand_idx, facility_idx in enumerate(assignment_indices):
+        demand_row = snapped_demand.iloc[demand_idx]
+        facility_row = snapped_facilities.iloc[facility_idx]
+        weighted_cost = float(weighted_costs[demand_idx])
+
+        assignment_rows.append(
+            {
+                "demand_id": str(demand_row["id"]),
+                "candidate_id": str(facility_row["id"]),
+                "weighted_cost": weighted_cost,
+            }
+        )
+
+        assignment_lines.append(
+            {
+                "demand_id": str(demand_row["id"]),
+                "facility_id": str(facility_row["id"]),
+                "from_lat": float(demand_row["lat"]),
+                "from_lng": float(demand_row["lng"]),
+                "to_lat": float(facility_row["lat"]),
+                "to_lng": float(facility_row["lng"]),
+                "weighted_cost": weighted_cost,
+            }
+        )
+
+    return assignment_rows, assignment_lines
+
+
+def _build_sanity_short_circuit_payload(
+    snapped_demand: pd.DataFrame,
+    snapped_current: pd.DataFrame,
+    baseline_assignment_indices: list[int],
+    baseline_best_costs,
+    baseline_total_cost: float,
+    p: int,
+) -> dict:
+    baseline_rows, baseline_lines = _build_assignment_rows_and_lines_from_costs(
+        snapped_demand=snapped_demand,
+        snapped_facilities=snapped_current,
+        assignment_indices=baseline_assignment_indices,
+        weighted_costs=baseline_best_costs,
+    )
+
+    payload = {
+        "p": int(p),
+        "current_facility_count": int(len(snapped_current)),
+        "candidate_pool_count": int(len(snapped_current)),
+        "baseline_total_weighted_cost": float(baseline_total_cost),
+        "optimised_total_weighted_cost": float(baseline_total_cost),
+        "improvement_pct": 0.0,
+        "current_facility_ids": [str(x) for x in snapped_current["id"].tolist()],
+        "selected_candidate_ids": [str(x) for x in snapped_current["id"].tolist()],
+        "baseline_assignments": baseline_rows,
+        "optimised_assignments": baseline_rows,
+        "demand_points": [
+            {
+                "id": str(row["id"]),
+                "lat": float(row["lat"]),
+                "lng": float(row["lng"]),
+                "weight": float(row["weight"]),
+            }
+            for _, row in snapped_demand.iterrows()
+        ],
+        "current_facilities": [
+            {
+                "id": str(row["id"]),
+                "lat": float(row["lat"]),
+                "lng": float(row["lng"]),
+            }
+            for _, row in snapped_current.iterrows()
+        ],
+        "selected_facilities": [
+            {
+                "id": str(row["id"]),
+                "lat": float(row["lat"]),
+                "lng": float(row["lng"]),
+            }
+            for _, row in snapped_current.iterrows()
+        ],
+        "baseline_assignment_lines": baseline_lines,
+        "optimised_assignment_lines": baseline_lines,
+    }
+
+    return payload
+
+
 def run_private_compare(
     demand_csv_path: str | Path,
     current_csv_path: str | Path,
@@ -97,8 +220,20 @@ def run_private_compare(
     p: int,
 ) -> dict:
     demand_df = _validate_demand_df(_read_csv(demand_csv_path, "Demand"))
-    current_df = _validate_facility_df(_read_csv(current_csv_path, "Current facilities"), "Current facilities")
-    candidate_df = _validate_facility_df(_read_csv(candidate_csv_path, "Candidate facilities"), "Candidate facilities")
+    current_df = _validate_facility_df(
+        _read_csv(current_csv_path, "Current facilities"),
+        "Current facilities",
+    )
+    candidate_df = _validate_facility_df(
+        _read_csv(candidate_csv_path, "Candidate facilities"),
+        "Candidate facilities",
+    )
+
+    t0 = time.time()
+    print(
+        f"[private-run] start | demand={len(demand_df)} current={len(current_df)} candidate={len(candidate_df)} p={p}",
+        flush=True,
+    )
 
     if p < 1:
         raise ValueError("p must be at least 1")
@@ -111,50 +246,95 @@ def run_private_compare(
     if p > len(candidate_df):
         raise ValueError("p cannot exceed the number of candidate facilities")
 
-    loaded_graph = load_local_graph(
-        nodes_csv_path=graph_nodes_csv_path,
-        edges_csv_path=graph_edges_csv_path,
-    )
+    same_site_sets = _same_facility_sites(current_df, candidate_df)
 
-    snap_index = build_node_snap_index(loaded_graph.nodes_df)
+    nodes_key = _normalise_cache_key(graph_nodes_csv_path)
+    edges_key = _normalise_cache_key(graph_edges_csv_path)
 
+    print("[private-run] loading local graph", flush=True)
+    loaded_graph = _load_local_graph_cached(nodes_key, edges_key)
+    print(f"[private-run] local graph loaded in {time.time() - t0:.2f}s", flush=True)
+
+    print("[private-run] building snap index", flush=True)
+    snap_index = _build_snap_index_cached(nodes_key, edges_key)
+    print(f"[private-run] snap index ready in {time.time() - t0:.2f}s", flush=True)
+
+    print("[private-run] snapping demand", flush=True)
     snapped_demand = snap_points_to_nodes(
         demand_df.reset_index(drop=True),
         snap_index,
     ).reset_index(drop=True)
+    print(f"[private-run] snapped demand in {time.time() - t0:.2f}s", flush=True)
 
+    print("[private-run] snapping current facilities", flush=True)
     snapped_current = snap_points_to_nodes(
         current_df.reset_index(drop=True),
         snap_index,
     ).reset_index(drop=True)
+    print(f"[private-run] snapped current in {time.time() - t0:.2f}s", flush=True)
 
+    if same_site_sets:
+        print("[private-run] candidate snapping skipped (same site set as current)", flush=True)
+
+        print("[private-run] computing direct baseline nearest-facility assignment", flush=True)
+        baseline_assignments, baseline_best_costs, baseline_total_cost = compute_nearest_candidate_assignment(
+            graph=loaded_graph.graph,
+            origin_node_ids=snapped_demand["snapped_node_id"].tolist(),
+            candidate_node_ids=snapped_current["snapped_node_id"].tolist(),
+            origin_weights=snapped_demand["weight"].tolist(),
+        )
+        baseline_assignment_indices = [int(x) for x in baseline_assignments]
+        print(f"[private-run] direct baseline ready in {time.time() - t0:.2f}s", flush=True)
+
+        print("[private-run] sanity short-circuit triggered", flush=True)
+        payload = _build_sanity_short_circuit_payload(
+            snapped_demand=snapped_demand,
+            snapped_current=snapped_current,
+            baseline_assignment_indices=baseline_assignment_indices,
+            baseline_best_costs=baseline_best_costs,
+            baseline_total_cost=float(baseline_total_cost),
+            p=p,
+        )
+        print(f"[private-run] completed in {time.time() - t0:.2f}s", flush=True)
+        return payload
+
+    print("[private-run] snapping candidate facilities", flush=True)
     snapped_candidates = snap_points_to_nodes(
         candidate_df.reset_index(drop=True),
         snap_index,
     ).reset_index(drop=True)
+    print(f"[private-run] snapped candidates in {time.time() - t0:.2f}s", flush=True)
 
+    print("[private-run] building baseline cost matrix", flush=True)
     baseline_cost_matrix = compute_weighted_cost_matrix(
         graph=loaded_graph.graph,
         origin_node_ids=snapped_demand["snapped_node_id"].tolist(),
         candidate_node_ids=snapped_current["snapped_node_id"].tolist(),
         origin_weights=snapped_demand["weight"].tolist(),
     )
+    print(f"[private-run] baseline cost matrix ready in {time.time() - t0:.2f}s", flush=True)
 
+    print("[private-run] computing baseline assignment", flush=True)
     baseline_assignments, _, baseline_total_cost = compute_baseline_assignment(
         baseline_cost_matrix
     )
+    baseline_assignment_indices = [int(x) for x in baseline_assignments]
+    print(f"[private-run] baseline assignment ready in {time.time() - t0:.2f}s", flush=True)
 
+    print("[private-run] building candidate cost matrix", flush=True)
     candidate_cost_matrix = compute_weighted_cost_matrix(
         graph=loaded_graph.graph,
         origin_node_ids=snapped_demand["snapped_node_id"].tolist(),
         candidate_node_ids=snapped_candidates["snapped_node_id"].tolist(),
         origin_weights=snapped_demand["weight"].tolist(),
     )
+    print(f"[private-run] candidate cost matrix ready in {time.time() - t0:.2f}s", flush=True)
 
+    print("[private-run] building final payload", flush=True)
     payload = build_current_vs_optimised_payload(
         demand_df=snapped_demand,
         current_df=snapped_current,
-        baseline_assignments=[int(x) for x in baseline_assignments],
+        baseline_assignments=baseline_assignment_indices,
         baseline_total_weighted_cost=float(baseline_total_cost),
         baseline_cost_matrix=baseline_cost_matrix,
         candidate_df=snapped_candidates,
@@ -162,6 +342,7 @@ def run_private_compare(
         p=p,
     )
 
+    print(f"[private-run] completed in {time.time() - t0:.2f}s", flush=True)
     return payload
 
 

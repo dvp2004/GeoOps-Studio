@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Sequence
 
 import pandas as pd
-
+import numpy as np
 from engine.optimisation.p_median import solve_p_median
 
 
@@ -141,6 +141,36 @@ def build_comparison_payload(
     }
 
 
+def _validate_cost_matrix_feasibility(
+    cost_matrix,
+    demand_df: pd.DataFrame,
+    candidate_df: pd.DataFrame,
+    p: int,
+    context: str,
+) -> None:
+    finite_mask = np.isfinite(cost_matrix)
+
+    row_finite_counts = finite_mask.sum(axis=1)
+    bad_row_idx = np.where(row_finite_counts == 0)[0]
+
+    if len(bad_row_idx) > 0:
+        bad_demand_ids = demand_df.iloc[bad_row_idx]["id"].astype(str).tolist()
+        raise ValueError(
+            f"{context}: {len(bad_row_idx)} demand rows have no reachable candidate facility. "
+            f"Unreachable demand ids: {bad_demand_ids}"
+        )
+
+    col_finite_counts = finite_mask.sum(axis=0)
+    usable_candidate_cols = int((col_finite_counts > 0).sum())
+
+    if p > usable_candidate_cols:
+        usable_candidate_ids = candidate_df.iloc[np.where(col_finite_counts > 0)[0]]["id"].astype(str).tolist()
+        raise ValueError(
+            f"{context}: p={p} exceeds the number of usable candidate facilities ({usable_candidate_cols}). "
+            f"Usable candidate ids: {usable_candidate_ids}"
+        )
+
+
 def build_current_vs_optimised_payload(
     demand_df: pd.DataFrame,
     current_df: pd.DataFrame,
@@ -157,6 +187,14 @@ def build_current_vs_optimised_payload(
         raise ValueError(
             "For a fair current-vs-optimised comparison, p must equal the number of current facilities."
         )
+    
+    _validate_cost_matrix_feasibility(
+        cost_matrix=candidate_cost_matrix,
+        demand_df=demand_df,
+        candidate_df=candidate_df,
+        p=p,
+        context="Current-vs-optimised candidate matrix",
+    )
 
     solution = solve_p_median(cost_matrix=candidate_cost_matrix, p=p)
 

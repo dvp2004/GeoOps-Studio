@@ -36,6 +36,9 @@ def _normalise_nodes_df(nodes_df: pd.DataFrame) -> pd.DataFrame:
 
     df = nodes_df.copy()
 
+    if "lon" in df.columns and "lng" not in df.columns:
+        df = df.rename(columns={"lon": "lng"})
+
     if df[list(required_columns)].isnull().any().any():
         raise ValueError("Graph nodes CSV contains missing values in required columns")
 
