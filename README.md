@@ -334,31 +334,6 @@ Additional bundle-driven reshuffling routes used by the frontend benchmark panel
 
 ---
 
-## Screenshots
-
-Add screenshots here once captured.
-
-Suggested files:
-
-```
-docs/screenshots/landing.png
-docs/screenshots/generic-guide.png
-docs/screenshots/generic-workbench.png
-docs/screenshots/generic-results.png
-docs/screenshots/reshuffling-overview.png
-docs/screenshots/vendor-explorer.png
-```
-
-Then reference them like this:
-
-```markdown
-![Landing](docs/screenshots/landing.png)
-![Generic Mode Workbench](docs/screenshots/generic-workbench.png)
-![Reshuffling Overview](docs/screenshots/reshuffling-overview.png)
-```
-
----
-
 ## What is public and what is private
 
 ### Public
