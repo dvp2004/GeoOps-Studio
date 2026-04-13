@@ -62,7 +62,7 @@ export default function Page() {
               </h1>
               <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-600">
                 Public Generic Mode is the reusable 3-file optimisation workflow.
-                Reshuffling Benchmark is the richer private benchmark surface built on the Talabat-derived bundle.
+                Reshuffling Benchmark is the richer private benchmark surface backed by a non-public benchmark bundle.
               </p>
             </div>
 
