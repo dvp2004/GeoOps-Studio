@@ -1,11 +1,27 @@
 # GeoOps-Studio
 
-GeoOps-Studio is a geospatial optimisation workbench for comparing current facility layouts against optimised alternatives on a road network.
+GeoOps-Studio is a public geospatial optimisation app for comparing current facility layouts against p-median-style optimised alternatives using uploaded CSV inputs, backend optimisation, and interactive map outputs.
 
-It has two modes:
+## What you can do in 2 minutes
 
-- **Generic Mode**: a public three-file workflow for running a current-vs-optimised comparison from CSV inputs.
-- **Reshuffling Benchmark**: a richer private benchmark UI built from an internal reshuffling bundle derived from non-public delivery-platform data.
+1. Open Generic Mode
+2. Run the built-in demo, or load the sample CSVs
+3. Inspect the map, summary metrics, and selected optimised facilities
+4. Export the result JSON and facility table
+
+## Public workflow at a glance
+
+- upload demand points
+- upload current facilities
+- upload candidate facilities
+- run current-vs-optimised comparison
+- inspect map and results
+- export outputs
+
+The app has two surfaces:
+
+- **Generic Mode**: the public three-file optimisation workflow
+- **Reshuffling Benchmark**: a richer private benchmark surface backed by local non-public bundle outputs
 
 The project is designed to be:
 
@@ -124,6 +140,20 @@ GeoOps-Studio/
 │     └─ types/
 ├─ private_bundles/ # expected locally for private benchmark mode; not public
 └─ README.md
+```
+
+---
+
+## Architecture overview
+
+```mermaid
+flowchart LR
+    A[CSV inputs] --> B[Validation]
+    B --> C[FastAPI backend]
+    C --> D[Optimisation engine]
+    D --> E[Normalised result payload]
+    E --> F[Frontend map and tables]
+    E --> G[JSON / CSV exports]
 ```
 
 ---
@@ -302,7 +332,7 @@ The Reshuffling Benchmark expects a local private bundle to be present.
 Current supported local bundle:
 
 ```
-private_bundles # expected locally for private benchmark mode; not public
+private_bundles/ (expected locally for private benchmark mode; not public)
 ```
 
 The benchmark UI reads bundle outputs such as:
@@ -397,6 +427,15 @@ GeoOps-Studio is currently positioned as:
 The Generic Mode is the reusable public-facing path.
 
 The Reshuffling Benchmark is the richer internal benchmark view.
+
+---
+
+## Known limits
+
+- Generic Mode is designed for small-to-medium uploaded scenarios, not large private operational datasets.
+- The private Reshuffling Benchmark depends on local non-public benchmark bundles that are not shipped in the public repository.
+- Benchmark savings in the private mode are model-based comparative savings under the chosen objective, not literal replayed rider-route history.
+- The public workflow and the private benchmark are related, but they are not identical in data richness or benchmark depth.
 
 ---
 
