@@ -1024,7 +1024,7 @@ export default function GenericModePanel() {
 
           <SectionCard
             title="Schema guide"
-            subtitle="This is the public guidance layer. It reduces stupid input mistakes before backend validation."
+            subtitle="This is the public guidance layer. It helps catch common input errors before backend validation."
           >
             <div className="grid gap-4 xl:grid-cols-3">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -1264,7 +1264,7 @@ export default function GenericModePanel() {
 
           <SectionCard
             title="Input previews"
-            subtitle="Inspect the first few parsed rows before solving. This catches stupid formatting mistakes early."
+            subtitle="Inspect the first few parsed rows before solving. This helps catch formatting issues early."
           >
             <div className="grid gap-4 xl:grid-cols-3">
               <PreviewTable preview={demandPreview} title="Demand preview" />

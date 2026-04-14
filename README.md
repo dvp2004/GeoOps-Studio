@@ -5,7 +5,7 @@ GeoOps-Studio is a geospatial optimisation workbench for comparing current facil
 It has two modes:
 
 - **Generic Mode**: a public three-file workflow for running a current-vs-optimised comparison from CSV inputs.
-- **Reshuffling Benchmark**: a richer private benchmark UI built from an internal reshuffling bundle derived from Talabat-style food-delivery data.
+- **Reshuffling Benchmark**: a richer private benchmark UI built from an internal reshuffling bundle derived from non-public delivery-platform data.
 
 The project is designed to be:
 
@@ -122,8 +122,7 @@ GeoOps-Studio/
 │     ├─ app/
 │     ├─ components/
 │     └─ types/
-├─ private_bundles/
-│  └─ reshuffling_k80/
+├─ private_bundles/ # expected locally for private benchmark mode; not public
 └─ README.md
 ```
 
@@ -159,7 +158,7 @@ GeoOps-Studio/
 ### 1. Clone the repository
 
 ```bash
-git clone <your-repo-url> GeoOps-Studio
+git clone https://github.com/dvp2004/GeoOps-Studio.git GeoOps-Studio
 ```
 
 ### 2. Create and activate a virtual environment
@@ -251,6 +250,39 @@ Use the Generic Mode workbench and upload:
 - a current facilities CSV
 - a candidate facilities CSV
 
+#### Why current and candidate files use the same CSV schema
+
+In Generic Mode, the **current facilities** file and the **candidate facilities** file intentionally use the same facility-point schema:
+
+- `id`
+- `lat`
+- `lng`
+
+This is deliberate.
+
+At the CSV-validation level, both files represent the same kind of object: a set of facility locations on the graph. The difference between them is **not structural**, it is **semantic**:
+
+- the **current facilities** file defines the facilities that are open in the baseline layout
+- the **candidate facilities** file defines the pool of facilities the optimiser is allowed to choose from
+
+Because both files are just facility-point sets, the app applies the same low-level validation checks to both:
+- required identifier field
+- coordinate presence
+- coordinate parseability
+
+This avoids duplicating identical validation rules for two files that share the same structure.
+
+The distinction between the two files is enforced later in the optimisation flow, not in the raw CSV schema. In particular:
+
+- the current file is used to compute the baseline layout
+- the candidate file is used as the optimisation choice set
+- for fair current-vs-optimised comparison, `p` should match the number of current facilities
+
+So the design choice was:
+
+- **same schema for validation**
+- **different semantic roles in the solver**
+
 Recommended columns are shown in the UI and sample row formats are provided.
 
 Generic Mode also includes:
@@ -270,7 +302,7 @@ The Reshuffling Benchmark expects a local private bundle to be present.
 Current supported local bundle:
 
 ```
-private_bundles/reshuffling_k80
+private_bundles # expected locally for private benchmark mode; not public
 ```
 
 The benchmark UI reads bundle outputs such as:
@@ -347,7 +379,7 @@ Additional bundle-driven reshuffling routes used by the frontend benchmark panel
 ### Private
 
 - internal reshuffling bundle contents
-- Talabat-derived benchmark artefacts
+- non-public delivery-platform benchmark data
 - private benchmark outputs not suitable for public release
 - any internal datasets or derived files that rely on non-public operational data
 

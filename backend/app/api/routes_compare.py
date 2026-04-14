@@ -11,7 +11,6 @@ from backend.app.services.validation import read_and_validate_csv_df
 
 router = APIRouter(prefix="/api", tags=["comparison"])
 
-
 @router.post(
     "/compare-current-vs-p-median",
     response_model=CurrentVsOptimisedComparisonResponse,
@@ -24,8 +23,26 @@ def compare_current_vs_p_median_route(
     graph_id: str = Form("dubai_micro"),
 ) -> CurrentVsOptimisedComparisonResponse:
     demand_df = read_and_validate_csv_df(demand_file, "demand")
-    current_df = read_and_validate_csv_df(current_file, "candidate")
-    candidate_df = read_and_validate_csv_df(candidate_file, "candidate")
+
+    # Note:
+    # current_file intentionally uses the same validation schema as candidate_file.
+    #
+    # Reasoning:
+    # both "current" and "candidate" CSVs are facility-point sets with the same
+    # low-level structure: id + coordinates. Their difference is semantic, not structural:
+    # - current_df = facilities currently open in the baseline layout
+    # - candidate_df = facilities the optimiser may choose from
+    #
+    # We therefore reuse the same facility validation rules instead of duplicating
+    # identical checks for two CSVs with the same shape.
+    #
+    # The real distinction is enforced later in the optimisation flow:
+    # - current_df defines the baseline facility set
+    # - candidate_df defines the optimisation pool
+    # - fair comparison is handled by requiring p to match the current facility count
+
+    current_df = read_and_validate_csv_df(current_file, "facility")
+    candidate_df = read_and_validate_csv_df(candidate_file, "facility")
 
     try:
         raw_payload = solve_current_vs_p_median(

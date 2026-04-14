@@ -1,4 +1,3 @@
-@'
 services:
   - type: web
     name: geoops-studio-api
@@ -8,4 +7,3 @@ services:
     startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /
     autoDeploy: true
-'@ | Set-Content .\render.yaml
