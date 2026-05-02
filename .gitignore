@@ -51,3 +51,5 @@ run_private_sanity_top5000.py
 # Keep public screenshots, ignore private reshuffling screenshots
 docs/screenshots/reshuffling-*.png
 docs/screenshots/*vendor-explorer*.png
+
+.vercel/
